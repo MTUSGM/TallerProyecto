@@ -1,1 +1,124 @@
-const PALETTES={aurora:t=>{t=Math.max(0,Math.min(1,t));const stops=[[0,8,8,20],[.18,45,18,95],[.38,120,25,150],[.58,225,45,125],[.78,255,145,35],[1,255,225,95]];for(let i=1;i<stops.length;i++)if(t<=stops[i][0]){const a=stops[i-1],b=stops[i],q=(t-a[0])/(b[0]-a[0]);return[a[1]+(b[1]-a[1])*q,a[2]+(b[2]-a[2])*q,a[3]+(b[3]-a[3])*q].map(Math.round)}return[255,225,95]}};let renderWorker=null,workerURL=null,jobId=0;function getRenderWorker(){if(renderWorker)return renderWorker;workerURL=URL.createObjectURL(new Blob(["self.onmessage=e=>{const {id,view,o,w,h}=e.data,d=new Uint8ClampedArray(w*h*4),er2=o.escape*o.escape;for(let py=0;py<h;py++){const im=view.ymax-py/(h-1)*(view.ymax-view.ymin);for(let px=0;px<w;px++){const re=view.xmin+px/(w-1)*(view.xmax-view.xmin),r=iteratePixel(re,im,o,er2),k=(py*w+px)*4;if(!r.escaped){d[k]=4;d[k+1]=5;d[k+2]=14;d[k+3]=255;continue}let t=Math.min(1,r.iter/o.maxIter);t=Math.pow(t,.72);const c=color(t);d[k]=c[0];d[k+1]=c[1];d[k+2]=c[2];d[k+3]=255}}postMessage({id,w,h,buffer:d.buffer},[d.buffer])};\nfunction color(t){const s=[[0,8,8,20],[.18,45,18,95],[.38,120,25,150],[.58,225,45,125],[.78,255,145,35],[1,255,225,95]];for(let i=1;i<s.length;i++)if(t<=s[i][0]){const a=s[i-1],b=s[i],q=(t-a[0])/(b[0]-a[0]);return[Math.round(a[1]+(b[1]-a[1])*q),Math.round(a[2]+(b[2]-a[2])*q),Math.round(a[3]+(b[3]-a[3])*q)]}return[255,225,95]}\nfunction evalNode(n,z,c){if(n.type===\"num\")return[n.v,0];if(n.type===\"id\")return n.v.toLowerCase()===\"z\"?z:c;if(n.type===\"neg\"){const q=evalNode(n.x,z,c);return[-q[0],-q[1]]}const a=evalNode(n.a,z,c),b=evalNode(n.b,z,c);if(n.type===\"+\")return[a[0]+b[0],a[1]+b[1]];if(n.type===\"-\")return[a[0]-b[0],a[1]-b[1]];if(n.type===\"*\")return[a[0]*b[0]-a[1]*b[1],a[0]*b[1]+a[1]*b[0]];if(n.type===\"/\"){const q=b[0]*b[0]+b[1]*b[1];return[(a[0]*b[0]+a[1]*b[1])/q,(a[1]*b[0]-a[0]*b[1])/q]}if(n.type===\"pow\"){const r=Math.hypot(a[0],a[1]),ang=Math.atan2(a[1],a[0]),rn=Math.pow(r,b[0]);return[rn*Math.cos(ang*b[0]),rn*Math.sin(ang*b[0])]}}\nfunction iteratePixel(re,im,o,er2){const isM=o.preset===\"mandelbrot\";let zr=isM?0:re,zi=isM?0:im,cr=isM?re:o.cre,ci=isM?im:o.cim;const trig=o.type===\"sine\"||o.type===\"cosine\";for(let i=0;i<o.maxIter;i++){let nr,ni;if(o.type===\"quadratic\"){nr=zr*zr-zi*zi+cr;ni=2*zr*zi+ci}else if(o.type===\"polynomial\"){[nr,ni]=evalNode(o.ast,[zr,zi],[cr,ci])}else if(trig){const ay=Math.abs(zi),limit=Math.asinh(Math.sqrt(er2)+Math.hypot(cr,ci));if(ay>limit)return{escaped:true,iter:i+1};const sx=Math.sin(zr),cx=Math.cos(zr),sh=Math.sinh(zi),ch=Math.cosh(zi);if(o.type===\"sine\"){nr=sx*ch+cr;ni=cx*sh+ci}else{nr=cx*ch+cr;ni=-sx*sh+ci}}else{const ee=Math.exp(zr);nr=ee*Math.cos(zi)+cr;ni=ee*Math.sin(zi)+ci}zr=nr;zi=ni;const a2=zr*zr+zi*zi;if(!Number.isFinite(a2)||a2>er2){let s=i+1;if(o.smooth&&a2>1)s=i+1-Math.log(Math.log(Math.sqrt(a2)))/Math.log(2);return{escaped:true,iter:s}}}return{escaped:false,iter:o.maxIter}}"],{type:"text/javascript"}));renderWorker=new Worker(workerURL);return renderWorker}function renderFractal(canvas,view,o){const scale=o.resolution,w=Math.max(160,Math.floor(canvas.clientWidth/scale)),h=Math.max(100,Math.floor(canvas.clientHeight/scale)),worker=getRenderWorker(),id=++jobId;return new Promise(resolve=>{const done=e=>{if(e.data.id!==id)return;worker.removeEventListener("message",done);canvas.width=e.data.w;canvas.height=e.data.h;canvas.getContext("2d",{alpha:false}).putImageData(new ImageData(new Uint8ClampedArray(e.data.buffer),e.data.w,e.data.h),0,0);resolve({width:e.data.w,height:e.data.h})};worker.addEventListener("message",done);worker.postMessage({id,view,o,w,h})})}function iterate(z0,c,fn,maxIter,escapeR){let z=C(z0),orbit=[z];for(let i=0;i<maxIter;i++){z=fn(z,c);orbit.push(z);if(!Number.isFinite(z.re)||!Number.isFinite(z.im)||z.abs()>escapeR)return{orbit,escaped:true,iterations:i+1}}return{orbit,escaped:false,iterations:maxIter}}function pixelToComplex(canvas,view,e){const r=canvas.getBoundingClientRect(),x=(e.clientX-r.left)/r.width,y=(e.clientY-r.top)/r.height;return new Complex(view.xmin+x*(view.xmax-view.xmin),view.ymax-y*(view.ymax-view.ymin))}
+const PALETTES={aurora:t=>{t=Math.max(0,Math.min(1,t));const stops=[[0,8,8,20],[.18,45,18,95],[.38,120,25,150],[.58,225,45,125],[.78,255,145,35],[1,255,225,95]];for(let i=1;i<stops.length;i++)if(t<=stops[i][0]){const a=stops[i-1],b=stops[i],q=(t-a[0])/(b[0]-a[0]);return[a[1]+(b[1]-a[1])*q,a[2]+(b[2]-a[2])*q,a[3]+(b[3]-a[3])*q].map(Math.round)}return[255,225,95]}};
+
+let renderWorkers=null,workerURLs=[],jobId=0;
+
+function workerSource(){
+return String.raw`
+const TRIG_N=2048, TRIG_TWOPI=Math.PI*2, HYP_N=2048, HYP_MAX=4;
+const st=new Float64Array(TRIG_N+1),ct=new Float64Array(TRIG_N+1),sh=new Float64Array(HYP_N+1),ch=new Float64Array(HYP_N+1);
+for(let i=0;i<=TRIG_N;i++){const x=-Math.PI+TRIG_TWOPI*i/TRIG_N;st[i]=Math.sin(x);ct[i]=Math.cos(x)}
+for(let i=0;i<=HYP_N;i++){const x=-HYP_MAX+2*HYP_MAX*i/HYP_N;sh[i]=Math.sinh(x);ch[i]=Math.cosh(x)}
+
+function trig(x){x=(x+Math.PI)%TRIG_TWOPI;if(x<0)x+=TRIG_TWOPI;x-=Math.PI;const p=(x+Math.PI)/TRIG_TWOPI*TRIG_N,i=p|0,f=p-i,j=i===TRIG_N?0:i+1;return[st[i]*(1-f)+st[j]*f,ct[i]*(1-f)+ct[j]*f]}
+function hyp(x){const p=(x+HYP_MAX)/(2*HYP_MAX)*HYP_N;if(p<=0)return[sh[0],ch[0]];if(p>=HYP_N)return[Math.sinh(x),Math.cosh(x)];const i=p|0,f=p-i;return[sh[i]*(1-f)+sh[i+1]*f,ch[i]*(1-f)+ch[i+1]*f]}
+
+self.onmessage=e=>{
+ const {id,view,o,w,y0,y1}=e.data,d=new Uint8ClampedArray(w*(y1-y0)*4),er2=o.escape*o.escape;
+ for(let py=y0;py<y1;py++){
+  const im=view.ymax-py/(Math.max(1,e.data.h-1))*(view.ymax-view.ymin);
+  for(let px=0;px<w;px++){
+   const re=view.xmin+px/(w-1)*(view.xmax-view.xmin),r=iteratePixel(re,im,o,er2),k=((py-y0)*w+px)*4;
+   if(!r.escaped){d[k]=4;d[k+1]=5;d[k+2]=14;d[k+3]=255;continue}
+   let t=r.iter/o.maxIter;if(t>1)t=1;t=Math.pow(t,.72);
+   const c=color(t);d[k]=c[0];d[k+1]=c[1];d[k+2]=c[2];d[k+3]=255;
+  }
+ }
+ postMessage({id,y0,y1,w,h:y1-y0,buffer:d.buffer},[d.buffer])
+};
+
+function color(t){
+ const s=[[0,8,8,20],[.18,45,18,95],[.38,120,25,150],[.58,225,45,125],[.78,255,145,35],[1,255,225,95]];
+ for(let i=1;i<s.length;i++)if(t<=s[i][0]){const a=s[i-1],b=s[i],q=(t-a[0])/(b[0]-a[0]);return[Math.round(a[1]+(b[1]-a[1])*q),Math.round(a[2]+(b[2]-a[2])*q),Math.round(a[3]+(b[3]-a[3])*q)]}
+ return[255,225,95]
+}
+
+function evalNode(n,z,c){
+ if(n.type==="num")return[n.v,0];
+ if(n.type==="id")return n.v.toLowerCase()==="z"?z:c;
+ if(n.type==="neg"){const q=evalNode(n.x,z,c);return[-q[0],-q[1]]}
+ const a=evalNode(n.a,z,c),b=evalNode(n.b,z,c);
+ if(n.type==="+")return[a[0]+b[0],a[1]+b[1]];
+ if(n.type==="-")return[a[0]-b[0],a[1]-b[1]];
+ if(n.type==="*")return[a[0]*b[0]-a[1]*b[1],a[0]*b[1]+a[1]*b[0]];
+ if(n.type==="/"){const q=b[0]*b[0]+b[1]*b[1];return[(a[0]*b[0]+a[1]*b[1])/q,(a[1]*b[0]-a[0]*b[1])/q]}
+ if(n.type==="pow"){const r=Math.hypot(a[0],a[1]),ang=Math.atan2(a[1],a[0]),rn=Math.pow(r,b[0]),tc=trig(ang*b[0]);return[rn*tc[1],rn*tc[0]]}
+}
+
+function iteratePixel(re,im,o,er2){
+ const isM=o.preset==="mandelbrot";
+ let zr=isM?0:re,zi=isM?0:im,cr=isM?re:o.cre,ci=isM?im:o.cim;
+ const trigType=o.type==="sine"||o.type==="cosine";
+ const limit=trigType?Math.asinh(Math.sqrt(er2)+Math.hypot(cr,ci)):0;
+ for(let i=0;i<o.maxIter;i++){
+  let nr,ni;
+  if(o.type==="quadratic"){nr=zr*zr-zi*zi+cr;ni=2*zr*zi+ci}
+  else if(o.type==="polynomial"){[nr,ni]=evalNode(o.ast,[zr,zi],[cr,ci])}
+  else if(trigType){
+   const ay=Math.abs(zi);
+   if(ay>limit)return{escaped:true,iter:i+1};
+   const tc=trig(zr),hc=hyp(zi),sx=tc[0],cx=tc[1],shv=hc[0],chv=hc[1];
+   if(o.type==="sine"){nr=sx*chv+cr;ni=cx*shv+ci}
+   else{nr=cx*chv+cr;ni=-sx*shv+ci}
+  }else{
+   const ee=Math.exp(zr),tc=trig(zi);nr=ee*tc[1]+cr;ni=ee*tc[0]+ci
+  }
+  zr=nr;zi=ni;
+  const a2=zr*zr+zi*zi;
+  if(!Number.isFinite(a2)||a2>er2){
+   let s=i+1;
+   if(o.smooth&&a2>1)s=i+1-Math.log(Math.log(Math.sqrt(a2)))/Math.log(2);
+   return{escaped:true,iter:s}
+  }
+ }
+ return{escaped:false,iter:o.maxIter}
+}
+`
+}
+
+function getRenderWorkers(){
+ if(renderWorkers)return renderWorkers;
+ const n=Math.min(4,Math.max(2,(navigator.hardwareConcurrency||2)-1));
+ const src=workerSource();
+ renderWorkers=[];
+ for(let i=0;i<n;i++){
+  const url=URL.createObjectURL(new Blob([src],{type:"text/javascript"}));
+  workerURLs.push(url);
+  renderWorkers.push(new Worker(url));
+ }
+ return renderWorkers;
+}
+
+function renderFractal(canvas,view,o){
+ const scale=o.resolution,w=Math.max(160,Math.floor(canvas.clientWidth/scale)),h=Math.max(100,Math.floor(canvas.clientHeight/scale));
+ const workers=getRenderWorkers(),id=++jobId,parts=Math.min(workers.length,h),rows=Math.ceil(h/parts),full=new Uint8ClampedArray(w*h*4);
+ return new Promise(resolve=>{
+  let done=0;
+  workers.forEach((worker,i)=>{
+   const y0=i*rows,y1=Math.min(h,y0+rows);
+   if(y0>=h){done++;return}
+   const onMessage=e=>{
+    if(e.data.id!==id)return;
+    worker.removeEventListener("message",onMessage);
+    full.set(new Uint8ClampedArray(e.data.buffer),e.data.y0*w*4);
+    done++;
+    if(done===parts){
+     canvas.width=w;canvas.height=h;
+     canvas.getContext("2d",{alpha:false}).putImageData(new ImageData(full,w,h),0,0);
+     resolve({width:w,height:h})
+    }
+   };
+   worker.addEventListener("message",onMessage);
+   worker.postMessage({id,view,o,w,h,y0,y1});
+  });
+ })
+}
+
+function iterate(z0,c,fn,maxIter,escapeR){
+ let z=C(z0),orbit=[z];
+ for(let i=0;i<maxIter;i++){z=fn(z,c);orbit.push(z);if(!Number.isFinite(z.re)||!Number.isFinite(z.im)||z.abs()>escapeR)return{orbit,escaped:true,iterations:i+1}}
+ return{orbit,escaped:false,iterations:maxIter}
+}
+function pixelToComplex(canvas,view,e){
+ const r=canvas.getBoundingClientRect(),x=(e.clientX-r.left)/r.width,y=(e.clientY-r.top)/r.height;
+ return new Complex(view.xmin+x*(view.xmax-view.xmin),view.ymax-y*(view.ymax-view.ymin))
+}
