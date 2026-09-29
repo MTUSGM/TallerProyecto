@@ -13,7 +13,7 @@ function trig(x){x=(x+Math.PI)%TRIG_TWOPI;if(x<0)x+=TRIG_TWOPI;x-=Math.PI;const 
 function hyp(x){const p=(x+HYP_MAX)/(2*HYP_MAX)*HYP_N;if(p<=0)return[sh[0],ch[0]];if(p>=HYP_N)return[Math.sinh(x),Math.cosh(x)];const i=p|0,f=p-i;return[sh[i]*(1-f)+sh[i+1]*f,ch[i]*(1-f)+ch[i+1]*f]}
 
 self.onmessage=e=>{
- const {id,view,o,w,y0,y1}=e.data,d=new Uint8ClampedArray(w*(y1-y0)*4),er2=o.escape*o.escape;
+ const {id,view,o,w,y0,y1}=e.data,d=new Uint8ClampedArray(w*(y1-y0)*4),er2=o.escape*o.escape,poly=o.type==="polynomial"?compileRPN(o.ast):null,sr=poly?new Float64Array(poly.length+2):null,si=poly?new Float64Array(poly.length+2):null;
  for(let py=y0;py<y1;py++){
   const im=view.ymax-py/(Math.max(1,e.data.h-1))*(view.ymax-view.ymin);
   for(let px=0;px<w;px++){
@@ -32,16 +32,24 @@ function color(t){
  return[255,225,95]
 }
 
-function evalNode(n,z,c){
- if(n.type==="num")return[n.v,0];
- if(n.type==="id")return n.v.toLowerCase()==="z"?z:c;
- if(n.type==="neg"){const q=evalNode(n.x,z,c);return[-q[0],-q[1]]}
- const a=evalNode(n.a,z,c),b=evalNode(n.b,z,c);
- if(n.type==="+")return[a[0]+b[0],a[1]+b[1]];
- if(n.type==="-")return[a[0]-b[0],a[1]-b[1]];
- if(n.type==="*")return[a[0]*b[0]-a[1]*b[1],a[0]*b[1]+a[1]*b[0]];
- if(n.type==="/"){const q=b[0]*b[0]+b[1]*b[1];return[(a[0]*b[0]+a[1]*b[1])/q,(a[1]*b[0]-a[0]*b[1])/q]}
- if(n.type==="pow"){const r=Math.hypot(a[0],a[1]),ang=Math.atan2(a[1],a[0]),rn=Math.pow(r,b[0]),tc=trig(ang*b[0]);return[rn*tc[1],rn*tc[0]]}
+function compileRPN(n,out=[]){if(n.type==="num")out.push(["n",n.v]);else if(n.type==="id")out.push([n.v.toLowerCase()==="z"?"z":"c"]);else if(n.type==="neg"){compileRPN(n.x,out);out.push(["neg"])}else{compileRPN(n.a,out);compileRPN(n.b,out);out.push([n.type])}return out}
+function evalRPN(code,zr,zi,cr,ci,sr,si){
+ let sp=0;
+ for(let j=0;j<code.length;j++){
+  const q=code[j],op=q[0];
+  if(op==="n"){sr[sp]=q[1];si[sp++]=0;continue}
+  if(op==="z"){sr[sp]=zr;si[sp++]=zi;continue}
+  if(op==="c"){sr[sp]=cr;si[sp++]=ci;continue}
+  if(op==="neg"){--sp;sr[sp]=-sr[sp];si[sp]=-si[sp];continue}
+  const br=sr[--sp],bi=si[sp],ar=sr[sp-1],ai=si[sp-1];
+  if(op==="+"){sr[sp-1]=ar+br;si[sp-1]=ai+bi}
+  else if(op==="-"){sr[sp-1]=ar-br;si[sp-1]=ai-bi}
+  else if(op==="*"){sr[sp-1]=ar*br-ai*bi;si[sp-1]=ar*bi+ai*br}
+  else if(op==="/"){const d=br*br+bi*bi;sr[sp-1]=(ar*br+ai*bi)/d;si[sp-1]=(ai*br-ar*bi)/d}
+  else if(op==="^"&&bi===0&&Number.isInteger(br)&&br>=0&&br<=12){
+   if(br===0){sr[sp-1]=1;si[sp-1]=0}else{let n=br,pr=1,pi=0,qr=ar,qi=ai;while(n){if(n%2){const tr=pr*qr-pi*qi,ti=pr*qi+pi*qr;pr=tr;pi=ti}n=Math.floor(n/2);if(n){const tr=qr*qr-qi*qi,ti=2*qr*qi;qr=tr;qi=ti}}sr[sp-1]=pr;si[sp-1]=pi}
+  }else if(op==="^"){const rr=Math.hypot(ar,ai),ang=Math.atan2(ai,ar),rn=Math.pow(rr,br),tc=trig(ang*br);sr[sp-1]=rn*tc[1];si[sp-1]=rn*tc[0]}
+ }
 }
 
 function iteratePixel(re,im,o,er2){
@@ -52,7 +60,7 @@ function iteratePixel(re,im,o,er2){
  for(let i=0;i<o.maxIter;i++){
   let nr,ni;
   if(o.type==="quadratic"){nr=zr*zr-zi*zi+cr;ni=2*zr*zi+ci}
-  else if(o.type==="polynomial"){[nr,ni]=evalNode(o.ast,[zr,zi],[cr,ci])}
+  else if(o.type==="polynomial"){evalRPN(poly,zr,zi,cr,ci,sr,si);nr=sr[0];ni=si[0]}
   else if(trigType){
    const ay=Math.abs(zi);
    if(ay>limit)return{escaped:true,iter:i+1};
