@@ -17,7 +17,7 @@ self.onmessage=e=>{
  for(let py=y0;py<y1;py++){
   const im=view.ymax-py/(Math.max(1,e.data.h-1))*(view.ymax-view.ymin);
   for(let px=0;px<w;px++){
-   const re=view.xmin+px/(w-1)*(view.xmax-view.xmin),r=iteratePixel(re,im,o,er2),k=((py-y0)*w+px)*4;
+   const re=view.xmin+px/(w-1)*(view.xmax-view.xmin),r=iteratePixel(re,im,o,er2,poly,sr,si),k=((py-y0)*w+px)*4;
    if(!r.escaped){d[k]=4;d[k+1]=5;d[k+2]=14;d[k+3]=255;continue}
    let t=r.iter/o.maxIter;if(t>1)t=1;t=Math.pow(t,.72);
    const c=color(t);d[k]=c[0];d[k+1]=c[1];d[k+2]=c[2];d[k+3]=255;
@@ -52,7 +52,7 @@ function evalRPN(code,zr,zi,cr,ci,sr,si){
  }
 }
 
-function iteratePixel(re,im,o,er2){
+function iteratePixel(re,im,o,er2,poly,sr,si){
  const isM=o.preset==="mandelbrot";
  let zr=isM?0:re,zi=isM?0:im,cr=isM?re:o.cre,ci=isM?im:o.cim;
  const trigType=o.type==="sine"||o.type==="cosine";
